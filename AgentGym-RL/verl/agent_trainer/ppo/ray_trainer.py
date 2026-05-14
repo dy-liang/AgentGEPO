@@ -157,6 +157,28 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
                                                                         index=index)
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
+    elif adv_estimator == 'qapo':
+        token_level_rewards = data.batch['token_level_rewards']
+        index = data.non_tensor_batch['uid']
+        response_mask = data.batch['response_mask']
+        trajectory_lengths = data.batch['task_rounds'].to(device=token_level_rewards.device,
+                                                          dtype=token_level_rewards.dtype).clamp_min(1.0)
+        data.batch['token_level_rewards_for_logging'] = token_level_rewards.clone()
+        if 'token_level_scores' in data.batch.keys():
+            data.batch['token_level_scores_for_logging'] = data.batch['token_level_scores'].clone()
+        if 'task_scores' in data.batch.keys():
+            data.batch['task_scores_for_logging'] = data.batch['task_scores'].clone()
+        scaled_token_level_rewards = token_level_rewards / trajectory_lengths.unsqueeze(-1)
+        data.batch['token_level_rewards'] = scaled_token_level_rewards
+        if 'token_level_scores' in data.batch.keys():
+            data.batch['token_level_scores'] = data.batch['token_level_scores'] / trajectory_lengths.unsqueeze(-1)
+        if 'task_scores' in data.batch.keys():
+            data.batch['task_scores'] = data.batch['task_scores'] / trajectory_lengths.unsqueeze(-1)
+        advantages, returns = core_algos.compute_grpo_outcome_advantage(token_level_rewards=scaled_token_level_rewards,
+                                                                        eos_mask=response_mask,
+                                                                        index=index)
+        data.batch['advantages'] = advantages
+        data.batch['returns'] = returns
     elif adv_estimator == 'rloo':
         token_level_rewards = data.batch['token_level_rewards']
         index = data.non_tensor_batch['uid']
@@ -253,9 +275,13 @@ def reduce_metrics(metrics: dict):
 
 def compute_data_metrics(batch, use_critic=True):
     # TODO: add response length
-    sequence_score = batch.batch['token_level_scores'].sum(-1)
-    sequence_reward = batch.batch['token_level_rewards'].sum(-1)
-    task_scores = batch.batch["task_scores"].sum(-1)
+    score_key = 'token_level_scores_for_logging' if 'token_level_scores_for_logging' in batch.batch.keys() else 'token_level_scores'
+    reward_key = 'token_level_rewards_for_logging' if 'token_level_rewards_for_logging' in batch.batch.keys() else 'token_level_rewards'
+    task_score_key = 'task_scores_for_logging' if 'task_scores_for_logging' in batch.batch.keys() else 'task_scores'
+
+    sequence_score = batch.batch[score_key].sum(-1)
+    sequence_reward = batch.batch[reward_key].sum(-1)
+    task_scores = batch.batch[task_score_key].sum(-1)
     task_rounds = batch.batch["task_rounds"]
 
     response_length = batch.batch['response_mask'].sum(-1).float()
@@ -421,6 +447,8 @@ class RayPPOTrainer(object):
         if self.config.algorithm.adv_estimator == 'gae':
             self.use_critic = True
         elif self.config.algorithm.adv_estimator == 'grpo':
+            self.use_critic = False
+        elif self.config.algorithm.adv_estimator == 'qapo':
             self.use_critic = False
         elif self.config.algorithm.adv_estimator == 'reinforce_plus_plus':
             self.use_critic = False

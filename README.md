@@ -142,6 +142,12 @@ cd AgentGym/agentenv
 pip3 install -e .
 pip3 install transformers==4.51.3
 ```
+```
+conda activate agentenv-sciworld
+export NO_PROXY=127.0.0.1,localhost
+export no_proxy=127.0.0.1,localhost
+sciworld --host 0.0.0.0 --port 36001
+```
 
 ### Training
 

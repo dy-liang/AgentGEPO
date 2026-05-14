@@ -2,20 +2,22 @@ set -x
 export VLLM_USE_MODELSCOPE=0
 export VLLM_WORKER_MULTIPROC_METHOD=spawn
 export VLLM_ATTENTION_BACKEND=XFORMERS
-
+export HF_ENDPOINT=https://hf-mirror.com
+export NO_PROXY=127.0.0.1,localhost
+export no_proxy=127.0.0.1,localhost
 task_name="sciworld"
 
-cd AgentGym-RL
-source activate
-conda activate agentgym-rl
+# cd AgentGym-RL
+# source activate
+# conda activate agentgym-rl sh examples/eval/sciworld_eval.sh
 export VLLM_ATTENTION_BACKEND=XFORMERS
 
-env_server_url="http://127.0.0.1:36005"
+env_server_url="http://127.0.0.1:36001"
 
 sample_num=1
 max_rounds=30
 
-ckpt_path="global_step_150/actor"
+ckpt_path="/home/hly/projects/llm-agent/AgentGym-RL/saves/agentgym_rl_7b_qapo/global_step_200/actor"
 model_path=${ckpt_path}/huggingface
 
 cd AgentGym-RL/scripts
@@ -23,7 +25,7 @@ python model_merger.py \
     --local_dir ${ckpt_path}
 
 HYDRA_FULL_ERROR=1 python3 -m verl.agent_trainer.main_generation  \
-    data.path=AgentEval/${task_name} \
+    data.path=/home/hly/projects/llm-agent/AgentGym-RL/AgentItemId/eval \
     data.max_prompt_length=1024 \
     data.max_response_length=8192 \
     data.n_samples=${sample_num} \
@@ -38,6 +40,8 @@ HYDRA_FULL_ERROR=1 python3 -m verl.agent_trainer.main_generation  \
     rollout.max_model_len=32768 \
     rollout.max_tokens=200 \
     rollout.tensor_model_parallel_size=1 \
-    rollout.rollout_log_dir=executer_logs
-status=$?
-exit $status
+    rollout.rollout_log_dir=executer_logs \
+    trainer.n_gpus_per_node=4 \
+    trainer.nnodes=1 \
+# status=$?
+# exit $status

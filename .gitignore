@@ -1,0 +1,5 @@
+AgentGym-RL/scripts/executer_logs/
+log/
+outputs/
+wandb/
+saves/

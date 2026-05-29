@@ -11,7 +11,7 @@ task_name="sciworld"
 # sciworld --host 0.0.0.0 --port 36001
 # cd AgentGym-RL
 # source activate
-# conda activate agentgym-rl ulimit -n 65535 nohup sh examples/train/AgentGym-RL/sciworld_train.sh > log/out_agentgym_rl_7b_grpo.log 2>&1 &
+# conda activate agentgym-rl ulimit -n 65535 nohup sh examples/train/AgentGym-RL/sciworld_train.sh > log/out_agentgym_rl_7b_grpo7_kl001.log 2>&1 &
 export VLLM_ATTENTION_BACKEND=XFORMERS
 #export WANDB_BASE_URL=https://api.bandw.top
 
@@ -21,7 +21,7 @@ export HF_ENDPOINT=https://hf-mirror.com
 # start training
 #wandb login xxx
 
-agent_model_path=/home/hly/.cache/modelscope/hub/models/Qwen/Qwen2.5-7B-Instruct
+agent_model_path=/home/hly/.cache/modelscope/hub/models/Qwen/Qwen2___5-7B-Instruct
 # pure_agent_model_name="Qwen2.5-7B-Instruct"
 # agent_model_path="models/${pure_agent_model_name}"
 export CUDA_VISIBLE_DEVICES=0,1
@@ -38,7 +38,7 @@ total_epoches=10
 
 model_save_dir="saves"
 mkdir -p ${model_save_dir}
-exp_name="agentgym_rl_7b_grpo"
+exp_name="agentgym_rl_7b_grpo7_kl001"
 
 model_save_path=${model_save_dir}/${exp_name}
 
@@ -57,7 +57,7 @@ HYDRA_FULL_ERROR=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True WANDB_MODE=o
     actor_rollout_ref.agentgym.timeout=600 \
     actor_rollout_ref.model.path=${agent_model_path} \
     actor_rollout_ref.actor.use_kl_loss=True \
-    actor_rollout_ref.actor.kl_loss_coef=0.001 \
+    actor_rollout_ref.actor.kl_loss_coef=0.01 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
     actor_rollout_ref.rollout.n=${rollout_sample_num} \
@@ -73,10 +73,10 @@ HYDRA_FULL_ERROR=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True WANDB_MODE=o
     trainer.default_local_dir=${model_save_path} \
     trainer.project_name=sciworld \
     trainer.experiment_name=${exp_name} \
-    trainer.save_freq=50 \
+    trainer.save_freq=200 \
     trainer.n_gpus_per_node=2 \
     trainer.nnodes=1 \
     trainer.total_epochs=${total_epoches}
 
-cd /home/hly/projects/llm-agent/gvpo_v2
+cd /home/hly/projects/AgentGEPO
 sh gpu.sh

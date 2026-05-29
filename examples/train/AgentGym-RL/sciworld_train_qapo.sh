@@ -1,5 +1,6 @@
 set -x
 pkill -f "hold_gpu"
+export WANDB_MODE=offline
 export VLLM_USE_MODELSCOPE=0
 export VLLM_WORKER_MULTIPROC_METHOD=spawn
 export VLLM_ATTENTION_BACKEND=XFORMERS
@@ -11,7 +12,9 @@ task_name="sciworld"
 # sciworld --host 0.0.0.0 --port 36001
 # cd AgentGym-RL
 # source activate
-# conda activate agentgym-rl ulimit -n 65535 nohup sh examples/train/AgentGym-RL/sciworld_train_qapo.sh > log/out_agentgym_rl_7b_qapo.log 2>&1 &
+# conda activate agentgym-rl ulimit -n 65535 nohup sh examples/train/AgentGym-RL/sciworld_train_qapo.sh > log/out_agentgym_rl_7b_qapo_1A+10.log 2>&1 &
+# nohup sh examples/train/AgentGym-RL/sciworld_train_qapo.sh > log/out_agentgym_rl_7b_qapo_base_55001tok.log 2>&1 &
+# cp -r /home/hly/projects/llm-agent/AgentGym-RL/saves/agentgym_rl_7b_qapo-base /gpfs-share/gfshome-2025xx/s202517/hly/
 export VLLM_ATTENTION_BACKEND=XFORMERS
 #export WANDB_BASE_URL=https://api.bandw.top
 
@@ -21,10 +24,10 @@ export HF_ENDPOINT=https://hf-mirror.com
 # start training
 #wandb login xxx
 
-agent_model_path=/home/hly/.cache/modelscope/hub/models/Qwen/Qwen2.5-7B-Instruct
+agent_model_path=/home/hly/.cache/modelscope/hub/models/Qwen/Qwen2___5-7B-Instruct
 # pure_agent_model_name="Qwen2.5-7B-Instruct"
 # agent_model_path="models/${pure_agent_model_name}"
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=0,1
 
 kl_coef=0.001
 policy_learning_rate=1e-6
@@ -38,7 +41,7 @@ total_epoches=10
 
 model_save_dir="saves"
 mkdir -p ${model_save_dir}
-exp_name="agentgym_rl_7b_qapo_2"
+exp_name="agentgym_rl_7b_qapo_base_55001tok"
 
 model_save_path=${model_save_dir}/${exp_name}
 
@@ -73,10 +76,10 @@ HYDRA_FULL_ERROR=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True WANDB_MODE=o
     trainer.default_local_dir=${model_save_path} \
     trainer.project_name=sciworld \
     trainer.experiment_name=${exp_name} \
-    trainer.save_freq=100 \
-    trainer.n_gpus_per_node=4 \
+    trainer.save_freq=200 \
+    trainer.n_gpus_per_node=2 \
     trainer.nnodes=1 \
     trainer.total_epochs=${total_epoches}
 
-cd /home/hly/projects/llm-agent/gvpo_v2
+cd /home/hly/projects/AgentGEPO
 sh gpu.sh

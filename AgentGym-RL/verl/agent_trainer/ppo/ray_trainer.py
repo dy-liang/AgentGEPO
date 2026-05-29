@@ -163,22 +163,31 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         response_mask = data.batch['response_mask']
         trajectory_lengths = data.batch['task_rounds'].to(device=token_level_rewards.device,
                                                           dtype=token_level_rewards.dtype).clamp_min(1.0)
+        response_token_lengths = response_mask.sum(dim=-1, keepdim=True).to(device=token_level_rewards.device,
+                                                                            dtype=token_level_rewards.dtype).clamp_min(1.0)
         data.batch['token_level_rewards_for_logging'] = token_level_rewards.clone()
         if 'token_level_scores' in data.batch.keys():
             data.batch['token_level_scores_for_logging'] = data.batch['token_level_scores'].clone()
         if 'task_scores' in data.batch.keys():
             data.batch['task_scores_for_logging'] = data.batch['task_scores'].clone()
-        scaled_token_level_rewards = token_level_rewards / trajectory_lengths.unsqueeze(-1)
+        raw_sequence_rewards = token_level_rewards.sum(dim=-1, keepdim=True)
+        token_level_dense_rewards = raw_sequence_rewards / response_token_lengths
+        scaled_token_level_rewards = (token_level_rewards / trajectory_lengths.unsqueeze(-1))
         data.batch['token_level_rewards'] = scaled_token_level_rewards
         if 'token_level_scores' in data.batch.keys():
             data.batch['token_level_scores'] = data.batch['token_level_scores'] / trajectory_lengths.unsqueeze(-1)
         if 'task_scores' in data.batch.keys():
             data.batch['task_scores'] = data.batch['task_scores'] / trajectory_lengths.unsqueeze(-1)
-        advantages, returns = core_algos.compute_grpo_outcome_advantage(token_level_rewards=scaled_token_level_rewards,
-                                                                        eos_mask=response_mask,
-                                                                        index=index)
-        data.batch['advantages'] = advantages
-        data.batch['returns'] = returns
+        qapo_advantages, qapo_returns = core_algos.compute_grpo_outcome_advantage(
+            token_level_rewards=scaled_token_level_rewards, eos_mask=response_mask, index=index)
+        grpo_advantages, grpo_returns = core_algos.compute_grpo_outcome_advantage(
+            token_level_rewards=token_level_rewards, eos_mask=response_mask, index=index)
+        token_level_advantages, token_level_returns = core_algos.compute_grpo_outcome_advantage(
+            token_level_rewards=token_level_dense_rewards, eos_mask=response_mask, index=index)
+        data.batch['qapo_advantages'] = qapo_advantages
+        data.batch['token_level_advantages'] = token_level_advantages
+        data.batch['advantages'] = 0.5 * qapo_advantages + 0.5 * grpo_advantages + 0.01 * token_level_advantages 
+        data.batch['returns'] = 0.5 * qapo_returns + 0.5 * grpo_returns + 0.01 * token_level_returns
     elif adv_estimator == 'rloo':
         token_level_rewards = data.batch['token_level_rewards']
         index = data.non_tensor_batch['uid']
@@ -294,6 +303,13 @@ def compute_data_metrics(batch, use_critic=True):
 
     valid_adv = torch.masked_select(advantages, response_mask)
     valid_returns = torch.masked_select(returns, response_mask)
+    valid_qapo_adv = None
+    valid_token_level_adv = None
+
+    if 'qapo_advantages' in batch.batch.keys():
+        valid_qapo_adv = torch.masked_select(batch.batch['qapo_advantages'], response_mask)
+    if 'token_level_advantages' in batch.batch.keys():
+        valid_token_level_adv = torch.masked_select(batch.batch['token_level_advantages'], response_mask)
 
     if use_critic:
         values = batch.batch['values']
@@ -317,11 +333,11 @@ def compute_data_metrics(batch, use_critic=True):
         'critic/task_score/min':
             torch.min(task_scores).detach().item(),
         # task round
-        'critic/task_round/mean':
+        'critic/task_round_len/mean':
             torch.mean(task_rounds).detach().item(),
-        'critic/task_round/max':
+        'critic/task_round_len/max':
             torch.max(task_rounds).detach().item(),
-        'critic/task_round/min':
+        'critic/task_round_len/min':
             torch.min(task_rounds).detach().item(),
         # reward
         'critic/rewards/mean':
@@ -337,6 +353,16 @@ def compute_data_metrics(batch, use_critic=True):
             torch.max(valid_adv).detach().item(),
         'critic/advantages/min':
             torch.min(valid_adv).detach().item(),
+        **({
+            'critic/qapo_advantages/mean': torch.mean(valid_qapo_adv).detach().item(),
+            'critic/qapo_advantages/max': torch.max(valid_qapo_adv).detach().item(),
+            'critic/qapo_advantages/min': torch.min(valid_qapo_adv).detach().item(),
+        } if valid_qapo_adv is not None else {}),
+        **({
+            'critic/token_level_advantages/mean': torch.mean(valid_token_level_adv).detach().item(),
+            'critic/token_level_advantages/max': torch.max(valid_token_level_adv).detach().item(),
+            'critic/token_level_advantages/min': torch.min(valid_token_level_adv).detach().item(),
+        } if valid_token_level_adv is not None else {}),
         # returns
         'critic/returns/mean':
             torch.mean(valid_returns).detach().item(),
